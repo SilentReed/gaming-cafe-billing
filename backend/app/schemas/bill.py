@@ -15,7 +15,7 @@ class BillOut(BaseModel):
     original_amount: float
     discount_rate: float
     discount_amount: float
-    promotion_id: int | None
+
     final_amount: float
     bonus_amount: float
     payment_method: str

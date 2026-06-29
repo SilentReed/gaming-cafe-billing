@@ -19,4 +19,5 @@ class AuditLog(Base):
     before_data = Column(Text, nullable=True)
     description = Column(String, default="")
     undone_at = Column(DateTime, nullable=True)
+    merchant_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=now_cst)

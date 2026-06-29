@@ -1,6 +1,7 @@
 registerPage('bills', async (container) => {
     let currentPage = 1;
     const pageSize = 20;
+    const isAdmin = localStorage.getItem('role') === 'admin' || localStorage.getItem('role') === 'merchant';
 
     container.innerHTML = `
         <div class="section-header">
@@ -92,7 +93,7 @@ registerPage('bills', async (container) => {
                 b.bonus_amount > 0 ? `<span style="color:var(--warning);font-size:12px;">含赠费¥${b.bonus_amount.toFixed(2)}</span>` : '<span style="color:var(--text-muted);font-size:12px;">-</span>',
                 `${paymentIcons[b.payment_method] || ''} ${paymentLabels[b.payment_method] || b.payment_method}`,
                 `<span class="badge ${st.cls}">${st.label}</span>`,
-                b.status !== 'refunded' ? `<button class="btn-sm btn-danger" onclick="doRefund(${b.id})">退款</button>` : '',
+                (isAdmin && b.status !== 'refunded') ? `<button class="btn-sm btn-danger" onclick="doRefund(${b.id})">退款</button>` : '',
             ];
         });
         renderTable(['ID', '会员', '模式', '时间', '时长', '费用', '赠费', '支付方式', '状态', '操作'], rows, tableEl);

@@ -10,6 +10,7 @@ class Bill(Base):
     __tablename__ = "bills"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    merchant_id = Column(Integer, nullable=True)
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
     member_id = Column(Integer, ForeignKey("members.id"), nullable=True)
     console_id = Column(Integer, ForeignKey("consoles.id"), nullable=False)
@@ -21,7 +22,7 @@ class Bill(Base):
     original_amount = Column(Float, nullable=False)
     discount_rate = Column(Float, nullable=False, default=1.0)
     discount_amount = Column(Float, nullable=False, default=0)
-    promotion_id = Column(Integer, ForeignKey("promotions.id"), nullable=True)
+
     final_amount = Column(Float, nullable=False)
     bonus_amount = Column(Float, nullable=False, default=0)
     payment_method = Column(String, nullable=False, default="balance")

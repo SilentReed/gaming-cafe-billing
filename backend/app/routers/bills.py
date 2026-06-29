@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session as DBSession
 from datetime import datetime, timezone, timedelta
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, get_current_merchant_id
 from app.models.bill import Bill
 from app.models.member import Member
 from app.models.transaction import Transaction
@@ -31,8 +31,11 @@ def list_bills(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: DBSession = Depends(get_db),
+    merchant_id: int | None = Depends(get_current_merchant_id),
 ):
     query = db.query(Bill)
+    if merchant_id is not None:
+        query = query.filter(Bill.merchant_id == merchant_id)
     if start_date:
         query = query.filter(Bill.started_at >= start_date)
     if end_date:
@@ -77,14 +80,21 @@ def list_bills(
 
 
 @router.get("/today")
-def today_summary(db: DBSession = Depends(get_db)):
+def today_summary(db: DBSession = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
     import sqlalchemy as sa
+
+    where_clause = "WHERE date(ended_at) = date('now') AND status != 'refunded'"
+    params = {}
+    if merchant_id is not None:
+        where_clause += " AND merchant_id = :merchant_id"
+        params["merchant_id"] = merchant_id
 
     row = db.execute(
         sa.text(
             "SELECT COUNT(*), COALESCE(SUM(final_amount), 0), COALESCE(SUM(bonus_amount), 0), COALESCE(SUM(duration_min), 0) "
-            "FROM bills WHERE date(ended_at) = date('now') AND status != 'refunded'"
-        )
+            f"FROM bills {where_clause}"
+        ),
+        params,
     ).fetchone()
     return {
         "count": row[0],
@@ -96,8 +106,11 @@ def today_summary(db: DBSession = Depends(get_db)):
 
 
 @router.get("/unpaid")
-def unpaid_bills(db: DBSession = Depends(get_db)):
-    bills = db.query(Bill).filter(Bill.status == "unpaid").order_by(Bill.id.desc()).all()
+def unpaid_bills(db: DBSession = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(Bill).filter(Bill.status == "unpaid")
+    if merchant_id is not None:
+        query = query.filter(Bill.merchant_id == merchant_id)
+    bills = query.order_by(Bill.id.desc()).all()
     result = []
     for b in bills:
         member = db.query(Member).filter(Member.id == b.member_id).first() if b.member_id else None
@@ -115,8 +128,11 @@ def unpaid_bills(db: DBSession = Depends(get_db)):
 
 
 @router.get("/{bill_id}", response_model=BillOut)
-def get_bill(bill_id: int, db: DBSession = Depends(get_db)):
-    bill = db.query(Bill).filter(Bill.id == bill_id).first()
+def get_bill(bill_id: int, db: DBSession = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(Bill).filter(Bill.id == bill_id)
+    if merchant_id is not None:
+        query = query.filter(Bill.merchant_id == merchant_id)
+    bill = query.first()
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")
     return bill
@@ -127,8 +143,11 @@ class BillSettle(BaseModel):
 
 
 @router.put("/{bill_id}/settle")
-def settle_bill(bill_id: int, body: BillSettle, db: DBSession = Depends(get_db)):
-    bill = db.query(Bill).filter(Bill.id == bill_id).first()
+def settle_bill(bill_id: int, body: BillSettle, db: DBSession = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(Bill).filter(Bill.id == bill_id)
+    if merchant_id is not None:
+        query = query.filter(Bill.merchant_id == merchant_id)
+    bill = query.first()
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")
     if bill.status != "unpaid":
@@ -140,7 +159,8 @@ def settle_bill(bill_id: int, body: BillSettle, db: DBSession = Depends(get_db))
     if bill.member_id and body.payment_method == "balance":
         member = db.query(Member).filter(Member.id == bill.member_id).first()
         if member:
-            actual, unpaid = deduct_from_balance(db, member.id, bill.final_amount, bill.id)
+            actual, unpaid = deduct_from_balance(db, member.id, bill.final_amount, bill.id, bill.merchant_id)
+            create_transaction(db, member.id, "deduction", -actual, reference_id=bill.id, description=f"Settle bill #{bill.id}", balance_after=member.balance, merchant_id=bill.merchant_id)
             bill.status = "paid" if unpaid == 0 else "unpaid"
 
     db.commit()
@@ -148,11 +168,14 @@ def settle_bill(bill_id: int, body: BillSettle, db: DBSession = Depends(get_db))
 
 
 @router.post("/{bill_id}/refund")
-def refund_bill(bill_id: int, body: BillRefund, db: DBSession = Depends(get_db), user=Depends(get_current_user)):
+def refund_bill(bill_id: int, body: BillRefund, db: DBSession = Depends(get_db), user=Depends(get_current_user), merchant_id: int | None = Depends(get_current_merchant_id)):
     import json
     from app.models.audit_log import AuditLog
 
-    bill = db.query(Bill).filter(Bill.id == bill_id).first()
+    query = db.query(Bill).filter(Bill.id == bill_id)
+    if merchant_id is not None:
+        query = query.filter(Bill.merchant_id == merchant_id)
+    bill = query.first()
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")
     if bill.status == "refunded":
@@ -175,6 +198,7 @@ def refund_bill(bill_id: int, body: BillRefund, db: DBSession = Depends(get_db),
                 reference_id=bill.id,
                 description=f"Refund for bill #{bill.id}: {body.reason}",
                 balance_after=member.balance,
+                merchant_id=merchant_id,
             )
 
     log = AuditLog(
@@ -184,6 +208,7 @@ def refund_bill(bill_id: int, body: BillRefund, db: DBSession = Depends(get_db),
         target_name=f"账单#{bill.id}",
         before_data=json.dumps({"status": old_status, "member_id": bill.member_id, "final_amount": bill.final_amount, "bonus_amount": bill.bonus_amount}),
         description=f"退款账单#{bill.id} ¥{bill.final_amount:.2f}: {body.reason}",
+        merchant_id=merchant_id,
     )
     db.add(log)
     db.commit()

@@ -1,0 +1,59 @@
+/* ===== Light Theme ===== */
+[data-theme="light"] {
+    --bg-primary: #f8fafc;
+    --bg-secondary: #ffffff;
+    --bg-card: #f1f5f9;
+    --bg-card-hover: #e2e8f0;
+    --border: #e2e8f0;
+    --border-light: #cbd5e1;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --accent-glow: rgba(59, 130, 246, 0.1);
+    --success: #10b981;
+    --success-bg: rgba(16, 185, 129, 0.1);
+    --danger: #ef4444;
+    --danger-bg: rgba(239, 68, 68, 0.1);
+    --warning: #f59e0b;
+    --warning-bg: rgba(245, 158, 11, 0.1);
+    --purple: #8b5cf6;
+    --purple-bg: rgba(139, 92, 246, 0.1);
+    --shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+[data-theme="light"] .stat-card::before {
+    opacity: 0.8;
+}
+
+[data-theme="light"] .console-card {
+    background: var(--bg-card);
+}
+
+[data-theme="light"] .toast {
+    background: #fff;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+[data-theme="light"] input,
+[data-theme="light"] select,
+[data-theme="light"] textarea {
+    background: #fff;
+    border-color: var(--border);
+}
+
+[data-theme="light"] #modal {
+    background: #fff;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+}
+
+[data-theme="light"] .login-card {
+    background: #fff;
+}

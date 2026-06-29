@@ -1,4 +1,5 @@
 registerPage('members', async (container) => {
+    const isAdmin = localStorage.getItem('role') === 'admin' || localStorage.getItem('role') === 'merchant';
     container.innerHTML = `
         <div class="section-header">
             <div>
@@ -10,15 +11,16 @@ registerPage('members', async (container) => {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                     <input id="m-search" placeholder="搜索姓名 / 手机 / 编号" style="width:220px;">
                 </div>
-                <button class="btn-primary" onclick="showNewMember()">
+                ${isAdmin ? `<button class="btn-primary" onclick="showNewMember()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     新增会员
-                </button>
+                </button>` : ''}
             </div>
         </div>
         <div class="table-wrapper">
             <div id="members-table"></div>
         </div>
+        ${isAdmin ? `
         <div style="margin-top:32px;">
             <div class="section-header" style="margin-bottom:12px;">
                 <h3 style="font-size:15px;">会员等级</h3>
@@ -31,7 +33,7 @@ registerPage('members', async (container) => {
                 <button class="btn-primary btn-sm" onclick="showNewBonusRule()">新增规则</button>
             </div>
             <div id="bonus-rules-list" class="table-wrapper"></div>
-        </div>
+        </div>` : ''}
     `;
 
     async function load(q = '') {
@@ -50,9 +52,9 @@ registerPage('members', async (container) => {
             `<span style="font-weight:600;">¥${m.balance.toFixed(2)}</span>`,
             `¥${m.total_recharged.toFixed(0)}`,
             `<div class="btn-group">
-                <button class="btn-sm btn-primary" onclick="showRecharge(${m.id}, '${m.name}')">充值</button>
+                ${isAdmin ? `<button class="btn-sm btn-primary" onclick="showRecharge(${m.id}, '${m.name}')">充值</button>` : ''}
                 <button class="btn-sm btn-secondary" onclick="showMemberDetail(${m.id})">详情</button>
-                <button class="btn-sm btn-danger" onclick="deleteMember(${m.id}, '${m.name}')">删除</button>
+                ${isAdmin ? `<button class="btn-sm btn-danger" onclick="deleteMember(${m.id}, '${m.name}')">删除</button>` : ''}
             </div>`,
         ]);
         renderTable(['编号', '姓名', '手机', '等级', '余额', '累计充值', '操作'], rows, tableEl);

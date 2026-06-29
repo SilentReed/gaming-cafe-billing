@@ -10,6 +10,7 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    merchant_id = Column(Integer, nullable=True)
     member_id = Column(Integer, ForeignKey("members.id"), nullable=False)
     type = Column(String, nullable=False)  # recharge | deduction | refund | adjustment
     amount = Column(Float, nullable=False)

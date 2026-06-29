@@ -1,3 +1,41 @@
+function formatTime(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    if (h > 0) return `${h}时${m}分${s}秒`;
+    if (m > 0) return `${m}分${s}秒`;
+    return `${s}秒`;
+}
+
+function updateTimerDisplay(sessions) {
+    /* Update timer displays from WebSocket data without full reload */
+    sessions.forEach(s => {
+        const card = document.querySelector(`.console-card[data-console-id="${s.console_id}"]`);
+        if (!card) return;
+        // Update elapsed time
+        const elapsedEl = card.querySelector('.session-elapsed');
+        if (elapsedEl) elapsedEl.textContent = formatDuration(s.elapsed_sec / 60);
+        // Update cost
+        const costEl = card.querySelector('.session-cost');
+        if (costEl) costEl.textContent = `¥${s.current_cost.toFixed(2)}`;
+        // Update countdown
+        const cdEl = card.querySelector('.countdown-remaining');
+        if (cdEl && s.countdown_remaining !== null) {
+            if (s.countdown_expired) {
+                cdEl.innerHTML = '<span class="badge badge-warning" style="font-size:11px;">倒计时已结束</span>';
+            } else {
+                cdEl.textContent = `⏳ 剩余 ${formatTime(s.countdown_remaining)}`;
+            }
+        }
+        // Update status badge
+        const badge = card.querySelector('.status-badge');
+        if (badge) {
+            badge.className = `status-badge status-${s.status}`;
+            badge.innerHTML = `<span class="dot"></span>${statusLabels[s.status] || s.status}`;
+        }
+    });
+}
+
 registerPage('dashboard', async (container) => {
     container.innerHTML = `
         <div id="dash-stats" class="stats-bar"></div>
@@ -42,13 +80,13 @@ registerPage('dashboard', async (container) => {
                     if (c.session.billing_mode === 'countdown' && c.session.duration_limit) {
                         countdownHtml = isExpired
                             ? `<div style="margin-top:6px;text-align:center;"><span class="badge badge-warning" style="font-size:11px;">倒计时已结束</span></div>`
-                            : `<div style="margin-top:4px;font-size:11px;color:var(--warning);text-align:center;">⏳ 剩余 ${formatTime(remaining)}</div>`;
+                            : `<div class="countdown-remaining" style="margin-top:4px;font-size:11px;color:var(--warning);text-align:center;">⏳ 剩余 ${formatTime(remaining)}</div>`;
                     }
 
                     info = `
                         <div class="session-info">
-                            <span>⏱ ${formatDuration(c.session.elapsed_min)}</span>
-                            <span>¥${c.session.current_cost.toFixed(2)}</span>
+                            <span class="session-elapsed">⏱ ${formatDuration(c.session.elapsed_min)}</span>
+                            <span class="session-cost">¥${c.session.current_cost.toFixed(2)}</span>
                         </div>
                         <div style="margin-top:6px;font-size:11px;color:var(--text-muted);display:flex;justify-content:space-between;">
                             <span>开始 ${startTime}</span>
@@ -65,7 +103,7 @@ registerPage('dashboard', async (container) => {
                     `;
                 }
                 return `
-                    <div class="console-card ${c.status}" onclick="onConsoleClick(${c.id}, '${c.status}')">
+                    <div class="console-card ${c.status}" data-console-id="${c.id}" onclick="onConsoleClick(${c.id}, '${c.status}')">
                         <div class="card-top">
                             <div><div class="name">${c.name}</div><div class="type">${c.console_type} · ${c.zone}</div></div>
                             <span class="status-badge status-${c.status}"><span class="dot"></span>${statusLabels[c.status]}</span>
@@ -116,8 +154,38 @@ registerPage('dashboard', async (container) => {
     }
 
     await load();
-    refreshTimer = setInterval(load, 1000);
-    container._cleanup = () => clearInterval(refreshTimer);
+    // WebSocket for real-time updates (falls back to polling)
+    let ws = null;
+    let wsRetry = 0;
+    function connectWS() {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsBase = location.pathname.startsWith('/cafe/') ? '/cafe' : '';
+        ws = new WebSocket(`${proto}//${location.host}${wsBase}/ws/dashboard`);
+        ws.onmessage = (e) => {
+            try {
+                const msg = JSON.parse(e.data);
+                if (msg.type === 'timer_update' && msg.sessions) {
+                    updateTimerDisplay(msg.sessions);
+                } else if (msg.type === 'countdown_warning' && msg.data) {
+                    const d = msg.data;
+                    showToast(`⚠️ 主机#${d.console_id} 倒计时还剩 ${Math.floor(d.remaining_sec/60)} 分钟`, 'warning');
+                    try { new Audio('data:audio/wav;base64,UklGRl9vT19teleGFtcGxl').play(); } catch {}
+                } else if (msg.type === 'countdown_expired' && msg.data) {
+                    showToast(`🔴 主机#${msg.data.console_id} 倒计时已结束！`, 'error');
+                    load(); // Full refresh to update status
+                }
+            } catch {}
+        };
+        ws.onclose = () => {
+            wsRetry++;
+            setTimeout(connectWS, Math.min(1000 * wsRetry, 10000));
+        };
+        ws.onopen = () => { wsRetry = 0; };
+    }
+    connectWS();
+    // Fallback: periodic full refresh every 30s (for non-timer data)
+    refreshTimer = setInterval(load, 30000);
+    container._cleanup = () => { clearInterval(refreshTimer); if (ws) ws.close(); };
 });
 
 window.onConsoleClick = async function(consoleId, status) {
@@ -255,7 +323,7 @@ window.searchPayMember=async function(q){clearTimeout(_pst);const re=document.ge
 window.selectPayMember=function(id,nm,ph,bal){const se=document.getElementById('pay-member-search');const he=document.getElementById('pay-member-id');const re=document.getElementById('pay-member-results');const sel=document.getElementById('pay-member-selected');const si=document.getElementById('pay-member-selected-info');const de=document.getElementById('balance-desc');if(he)he.value=id;if(re)re.innerHTML='';if(se)se.value='';if(sel)sel.style.display='flex';if(si)si.innerHTML=`<b>${nm}</b> <span style="color:var(--text-muted);font-size:12px;margin-left:4px;">${ph}</span> <span style="color:var(--success);font-weight:600;margin-left:8px;">¥${bal.toFixed(2)}</span>`;if(de)de.textContent=`${nm} · 余额 ¥${bal.toFixed(2)}`;};
 window.clearPayMember=function(){const he=document.getElementById('pay-member-id');const sel=document.getElementById('pay-member-selected');const de=document.getElementById('balance-desc');if(he)he.value='';if(sel)sel.style.display='none';if(de)de.textContent='搜索会员后使用余额支付';};
 
-window.confirmEndSession=async function(id){const m=window._spm;if(!m){showToast('请选择支付方式','error');return;}if(m==='balance'){const mid=document.getElementById('pay-member-id');if(!mid||!mid.value){showToast('余额支付必须选择会员','error');return;}}const body={payment_method:m};if(m==='balance'){const mid=document.getElementById('pay-member-id');if(mid&&mid.value)body.member_id=parseInt(mid.value);}try{const r=await api.put(`/sessions/${id}/end`,body);closeModal();const ml={balance:'余额',cash:'现金',wechat:'微信',alipay:'支付宝'};showToast(`收款成功 · ¥${r.final_amount.toFixed(2)} (${ml[r.payment_method]})`);navigateTo('dashboard');}catch(e){showToast(e.message,'error');}};
+window.confirmEndSession=async function(id){const m=window._spm;if(!m){showToast('请选择支付方式','error');return;}if(m==='balance'){const mid=document.getElementById('pay-member-id');if(!mid||!mid.value){showToast('余额支付必须选择会员','error');return;}}const body={payment_method:m};if(m==='balance'){const mid=document.getElementById('pay-member-id');if(mid&&mid.value)body.member_id=parseInt(mid.value);}try{const r=await api.put(`/sessions/${id}/end`,body);closeModal();const ml={balance:'余额',cash:'现金',wechat:'微信',alipay:'支付宝'};showToast(`收款成功 · ¥${r.final_amount.toFixed(2)} (${ml[r.payment_method]})`);showReceiptPreview({shopName:'游戏主机计费系统',receiptNo:'#'+r.bill_id,items:[{name:'主机使用 ('+r.duration_min.toFixed(0)+'分钟)',amount:r.final_amount}],finalAmount:r.finalAmount||r.final_amount,paymentMethod:r.payment_method});navigateTo('dashboard');}catch(e){showToast(e.message,'error');}};
 
 window.showExtendSession=function(sid,cn){showModal(`续时 — ${cn}`,`<div style="text-align:center;margin-bottom:16px;"><div style="width:48px;height:48px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg></div><div style="font-size:14px;color:var(--text-muted);">选择追加时长</div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;"><button class="btn-secondary ext-quick" onclick="document.getElementById('ext-minutes').value=30;this.parentElement.querySelectorAll('.ext-quick').forEach(b=>b.style.borderColor='var(--border)');this.style.borderColor='var(--accent)'">30分钟</button><button class="btn-secondary ext-quick" onclick="document.getElementById('ext-minutes').value=60;this.parentElement.querySelectorAll('.ext-quick').forEach(b=>b.style.borderColor='var(--border)');this.style.borderColor='var(--accent)'" style="border-color:var(--accent)">60分钟</button><button class="btn-secondary ext-quick" onclick="document.getElementById('ext-minutes').value=120;this.parentElement.querySelectorAll('.ext-quick').forEach(b=>b.style.borderColor='var(--border)');this.style.borderColor='var(--accent)'">2小时</button></div><div class="form-group"><input id="ext-minutes" type="number" value="60" min="1" style="text-align:center;font-size:18px;font-weight:600;padding:12px;"></div><button class="btn-primary" style="width:100%;margin-top:8px;padding:12px;font-size:15px;" onclick="doExtendSession(${sid})">确认续时</button>`);};
 window.doExtendSession=async function(sid){const m=parseFloat(document.getElementById('ext-minutes').value);if(!m||m<=0){showToast('请输入有效时长','error');return;}try{await api.put(`/sessions/${sid}/extend`,{additional_minutes:m});closeModal();showToast(`已续时 ${m} 分钟`);navigateTo('dashboard');}catch(e){showToast(e.message,'error');}};

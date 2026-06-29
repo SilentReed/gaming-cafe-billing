@@ -14,6 +14,16 @@ def init():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 
+    # Seed default merchant
+    existing_merchant = db.query(Merchant).first()
+    if not existing_merchant:
+        default_merchant = Merchant(name="默认商户", contact="管理员", phone="00000000000")
+        db.add(default_merchant)
+        db.flush()
+        merchant_id = default_merchant.id
+    else:
+        merchant_id = existing_merchant.id
+
     # Seed admin user
     admin = db.query(User).filter(User.username == "admin").first()
     if not admin:
@@ -21,7 +31,7 @@ def init():
             username="admin",
             password_hash=hash_password("admin123"),
             role="admin",
-            name="管理员",
+            name="超级管理员",
         ))
 
     # Seed membership tiers
@@ -43,7 +53,7 @@ def init():
             ))
 
     # Seed sample consoles
-    existing_consoles = db.query(Console).count()
+    existing_consoles = db.query(Console).filter(Console.merchant_id == merchant_id).count()
     if existing_consoles == 0:
         consoles = [
             ("PS5-01", "PS5", 30, "普通区"),
@@ -54,7 +64,7 @@ def init():
             ("PS5-VIP-01", "PS5", 50, "VIP区"),
         ]
         for name, ctype, rate, zone in consoles:
-            db.add(Console(name=name, console_type=ctype, hourly_rate=rate, zone=zone))
+            db.add(Console(name=name, console_type=ctype, hourly_rate=rate, zone=zone, merchant_id=merchant_id))
 
     db.commit()
     db.close()

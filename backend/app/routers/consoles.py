@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, get_current_merchant_id
 from app.models.console import Console
 from app.models.member import Member
 from app.models.session import Session as SessionModel
@@ -12,25 +13,33 @@ router = APIRouter(prefix="/consoles", tags=["consoles"])
 
 
 @router.get("", response_model=list[ConsoleOut])
-def list_consoles(db: Session = Depends(get_db)):
-    return db.query(Console).order_by(Console.id).all()
+def list_consoles(db: Session = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(Console)
+    if merchant_id is not None:
+        query = query.filter(Console.merchant_id == merchant_id)
+    return query.order_by(Console.id).all()
 
 
 @router.get("/dashboard")
-def dashboard(db: Session = Depends(get_db)):
-    consoles = db.query(Console).order_by(Console.id).all()
-    today_bills = db.execute(
-        __import__("sqlalchemy").text(
-            "SELECT COUNT(*), COALESCE(SUM(final_amount), 0), COALESCE(SUM(bonus_amount), 0) FROM bills "
-            "WHERE date(ended_at) = date('now', '+8 hours') AND status != 'refunded'"
-        )
-    ).fetchone()
-    today_recharges = db.execute(
-        __import__("sqlalchemy").text(
-            "SELECT COALESCE(SUM(amount), 0) FROM transactions "
-            "WHERE type = 'recharge' AND date(created_at) = date('now', '+8 hours')"
-        )
-    ).fetchone()
+def dashboard(db: Session = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(Console)
+    if merchant_id is not None:
+        query = query.filter(Console.merchant_id == merchant_id)
+    consoles = query.order_by(Console.id).all()
+
+    bill_query = "SELECT COUNT(*), COALESCE(SUM(final_amount), 0), COALESCE(SUM(bonus_amount), 0) FROM bills WHERE date(ended_at) = date('now') AND status != 'refunded'"
+    bill_params = {}
+    if merchant_id is not None:
+        bill_query += " AND merchant_id = :mid"
+        bill_params["mid"] = merchant_id
+    today_bills = db.execute(text(bill_query), bill_params).fetchone()
+
+    rech_query = "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'recharge' AND date(created_at) = date('now')"
+    rech_params = {}
+    if merchant_id is not None:
+        rech_query += " AND merchant_id = :mid"
+        rech_params["mid"] = merchant_id
+    today_recharges = db.execute(text(rech_query), rech_params).fetchone()
 
     # Auto-end expired countdown sessions (stop billing, generate unpaid bill)
     expired_countdowns = []
@@ -50,7 +59,7 @@ def dashboard(db: Session = Depends(get_db)):
             member = db.query(Member).filter(Member.id == s.member_id).first() if s.member_id else None
 
             end_session_fn(db, s)
-            bill = generate_bill(db, s, console, member, payment_method="balance" if member else "cash")
+            bill = generate_bill(db, s, console, member, payment_method="balance" if member else "cash", merchant_id=merchant_id)
             bill.status = "unpaid"
             if console:
                 console.status = "idle"
@@ -117,16 +126,19 @@ def dashboard(db: Session = Depends(get_db)):
 
 
 @router.get("/{console_id}", response_model=ConsoleOut)
-def get_console(console_id: int, db: Session = Depends(get_db)):
-    console = db.query(Console).filter(Console.id == console_id).first()
+def get_console(console_id: int, db: Session = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(Console).filter(Console.id == console_id)
+    if merchant_id is not None:
+        query = query.filter(Console.merchant_id == merchant_id)
+    console = query.first()
     if not console:
         raise HTTPException(status_code=404, detail="Console not found")
     return console
 
 
 @router.post("", response_model=ConsoleOut)
-def create_console(body: ConsoleCreate, db: Session = Depends(get_db)):
-    console = Console(**body.model_dump())
+def create_console(body: ConsoleCreate, db: Session = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    console = Console(**body.model_dump(), merchant_id=merchant_id)
     db.add(console)
     db.commit()
     db.refresh(console)
@@ -134,8 +146,11 @@ def create_console(body: ConsoleCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{console_id}", response_model=ConsoleOut)
-def update_console(console_id: int, body: ConsoleUpdate, db: Session = Depends(get_db)):
-    console = db.query(Console).filter(Console.id == console_id).first()
+def update_console(console_id: int, body: ConsoleUpdate, db: Session = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(Console).filter(Console.id == console_id)
+    if merchant_id is not None:
+        query = query.filter(Console.merchant_id == merchant_id)
+    console = query.first()
     if not console:
         raise HTTPException(status_code=404, detail="Console not found")
     for k, v in body.model_dump(exclude_unset=True).items():
@@ -146,11 +161,14 @@ def update_console(console_id: int, body: ConsoleUpdate, db: Session = Depends(g
 
 
 @router.delete("/{console_id}")
-def delete_console(console_id: int, db: Session = Depends(get_db)):
+def delete_console(console_id: int, db: Session = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
     import json
     from app.models.audit_log import AuditLog
 
-    console = db.query(Console).filter(Console.id == console_id).first()
+    query = db.query(Console).filter(Console.id == console_id)
+    if merchant_id is not None:
+        query = query.filter(Console.merchant_id == merchant_id)
+    console = query.first()
     if not console:
         raise HTTPException(status_code=404, detail="Console not found")
 
@@ -168,6 +186,7 @@ def delete_console(console_id: int, db: Session = Depends(get_db)):
         target_name=console.name,
         before_data=snapshot,
         description=f"删除主机 {console.name}",
+        merchant_id=merchant_id,
     )
     db.add(log)
     db.commit()
@@ -175,11 +194,14 @@ def delete_console(console_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{console_id}/status")
-def update_status(console_id: int, body: ConsoleStatusUpdate, db: Session = Depends(get_db)):
+def update_status(console_id: int, body: ConsoleStatusUpdate, db: Session = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
     import json
     from app.models.audit_log import AuditLog
 
-    console = db.query(Console).filter(Console.id == console_id).first()
+    query = db.query(Console).filter(Console.id == console_id)
+    if merchant_id is not None:
+        query = query.filter(Console.merchant_id == merchant_id)
+    console = query.first()
     if not console:
         raise HTTPException(status_code=404, detail="Console not found")
 
@@ -194,6 +216,7 @@ def update_status(console_id: int, body: ConsoleStatusUpdate, db: Session = Depe
             target_name=console.name,
             before_data=json.dumps({"status": old_status}),
             description=f"下线主机 {console.name}",
+            merchant_id=merchant_id,
         )
         db.add(log)
     elif body.status == "idle" and old_status == "offline":
@@ -204,6 +227,7 @@ def update_status(console_id: int, body: ConsoleStatusUpdate, db: Session = Depe
             target_name=console.name,
             before_data=json.dumps({"status": old_status}),
             description=f"上线主机 {console.name}",
+            merchant_id=merchant_id,
         )
         db.add(log)
 

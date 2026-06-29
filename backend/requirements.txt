@@ -5,3 +5,7 @@ pydantic-settings
 python-jose[cryptography]
 bcrypt
 python-multipart
+alembic
+pytest
+httpx
+slowapi

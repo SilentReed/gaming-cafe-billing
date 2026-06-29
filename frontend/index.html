@@ -4,10 +4,39 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>游戏主机计费管理系统</title>
-    <link rel="stylesheet" href="css/style.css?v=2.0">
+    <link rel="stylesheet" href="css/style.css?v=2.1">
 </head>
 <body>
-    <div id="app">
+    <!-- 登录页面 -->
+    <div id="login-page" class="login-page">
+        <div class="login-card">
+            <div class="logo-center">
+                <div class="icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="6" width="20" height="12" rx="2"/>
+                        <circle cx="8" cy="12" r="2"/>
+                        <circle cx="16" cy="12" r="2"/>
+                        <line x1="14" y1="10" x2="14" y2="14"/>
+                        <line x1="12" y1="12" x2="16" y2="12"/>
+                    </svg>
+                </div>
+                <h2>主机计费系统</h2>
+                <p class="subtitle">Gaming Billing System</p>
+            </div>
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" id="login-user" placeholder="请输入用户名" autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input type="password" id="login-pass" placeholder="请输入密码" autocomplete="current-password">
+            </div>
+            <button class="btn btn-primary" onclick="doLogin()">登 录</button>
+        </div>
+    </div>
+
+    <!-- 主应用 -->
+    <div id="app" style="display:none;">
         <aside id="sidebar">
             <div class="sidebar-header">
                 <div class="logo-icon">
@@ -25,39 +54,100 @@
                 </div>
             </div>
             <nav class="sidebar-nav">
-                <a href="#/dashboard" class="nav-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                    <span>计费大厅</span>
-                </a>
-                <a href="#/members" class="nav-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    <span>会员管理</span>
-                </a>
-                <a href="#/bills" class="nav-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                    <span>账单记录</span>
-                </a>
-                <a href="#/reports" class="nav-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                    <span>报表统计</span>
-                </a>
-                <a href="#/logs" class="nav-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                    <span>操作记录</span>
-                </a>
-                <a href="#/settings" class="nav-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    <span>主机设置</span>
-                </a>
+                <!-- 平台管理（仅超管可见） -->
+                <div class="nav-section nav-platform">
+                    <div class="nav-section-title">平台管理</div>
+                    <a href="#/platform-overview" class="nav-item">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 3v18"/></svg>
+                        <span>平台概览</span>
+                    </a>
+                    <a href="#/merchants" class="nav-item">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                        <span>商户管理</span>
+                    </a>
+                    <a href="#/merchant-features" class="nav-item">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                        <span>功能配置</span>
+                    </a>
+                </div>
+
+                <!-- 店铺管理（商户/员工可见） -->
+                <div class="nav-section nav-shop">
+                    <div class="nav-section-title">店铺管理</div>
+                    <a href="#/cashier" class="nav-item" style="background:var(--accent-glow);border:1px solid rgba(59,130,246,0.3);">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="12" r="2"/></svg>
+                        <span>收银台</span>
+                    </a>
+                    <a href="#/dashboard" class="nav-item">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                        <span>计费大厅</span>
+                    </a>
+                    <a href="#/members" class="nav-item">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        <span>会员管理</span>
+                    </a>
+                    <a href="#/bills" class="nav-item">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        <span>账单记录</span>
+                    </a>
+                    <a href="#/packages" class="nav-item">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                        <span>时段套餐</span>
+                    </a>
+                    <a href="#/products" class="nav-item">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+                        <span>餐饮商品</span>
+                    </a>
+                    <a href="#/reports" class="nav-item">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                        <span>报表统计</span>
+                    </a>
+                    <a href="#/logs" class="nav-item">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                        <span>操作记录</span>
+                    </a>
+                    <a href="#/shifts" class="nav-item">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        <span>交班</span>
+                    </a>
+                    <a href="#/staff" class="nav-item">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        <span>员工管理</span>
+                    </a>
+                    <a href="#/settings" class="nav-item">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                        <span>主机设置</span>
+                    </a>
+                </div>
             </nav>
+
             <div class="sidebar-footer">
                 <div class="user-info" id="user-info"></div>
+                <button class="btn-logout" onclick="doLogout()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    退出登录
+                </button>
             </div>
         </aside>
         <main id="content">
             <header id="topbar">
                 <div id="page-title"></div>
-                <div id="topbar-actions"></div>
+                <div id="topbar-actions">
+                    <!-- 移动端用户菜单 -->
+                    <div class="user-menu" id="user-menu">
+                        <button class="user-menu-btn" onclick="toggleUserMenu()">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        </button>
+                        <div class="user-menu-dropdown hidden" id="user-menu-dropdown">
+                            <div class="user-menu-info" id="user-menu-info"></div>
+                            <div class="user-menu-divider"></div>
+                            <button class="user-menu-item" onclick="doLogout()">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                                退出登录
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </header>
             <div id="page-container"></div>
         </main>
@@ -75,16 +165,29 @@
 
     <div id="toast-container"></div>
 
-    <script src="js/app.js?v=2.0"></script>
+    <!-- 核心JS -->
+    <script src="js/app.js?v=2.2"></script>
     <script src="js/components/modal.js?v=2.0"></script>
     <script src="js/components/toast.js?v=2.0"></script>
     <script src="js/components/table.js?v=2.0"></script>
     <script src="js/components/chart.js?v=2.0"></script>
+    
+    <!-- 页面JS -->
+    <script src="js/pages/cashier.js?v=2.0"></script>
     <script src="js/pages/dashboard.js?v=2.0"></script>
     <script src="js/pages/members.js?v=2.0"></script>
     <script src="js/pages/billing.js?v=2.0"></script>
+    <script src="js/pages/packages.js?v=2.0"></script>
+    <script src="js/pages/products.js?v=2.0"></script>
     <script src="js/pages/reports.js?v=2.0"></script>
+    <script src="js/pages/logs.js?v=2.0"></script>
+    <script src="js/pages/shifts.js?v=2.0"></script>
     <script src="js/pages/settings.js?v=2.0"></script>
-    <script src="js/pages/logs.js?v=1.0"></script>
+    <script src="js/pages/sessions.js?v=2.0"></script>
+    <script src="js/pages/accounts.js?v=2.0"></script>
+    <script src="js/pages/merchants.js?v=2.2"></script>
+    <script src="js/pages/platform.js?v=2.0"></script>
+    <script src="js/pages/merchant-features.js?v=2.1"></script>
+    <script src="js/pages/staff.js?v=2.1"></script>
 </body>
 </html>

@@ -1,7 +1,12 @@
 from pathlib import Path
 import json
+import asyncio
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Request
+from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -10,15 +15,21 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.database import engine, Base
-from app.routers import auth, consoles, members, sessions, bills, promotions, reports
-from app.deps import require_admin, get_current_user
+from app.routers import (auth, consoles, members, sessions, bills,
+                         reports, merchants, time_packages, shifts, products,
+                         orders, reservations, merchant_features, staff)
+from app.deps import require_admin, get_current_user, get_current_merchant_id, require_merchant_or_admin
 from app.database import get_db
 from app.config import settings
 from app.models.audit_log import AuditLog
+from app.ws import manager
 from app.models.membership_tier import MembershipTier
 from app.models.bonus_rule import BonusRule
 
-app = FastAPI(title="Gaming Cafe Billing System", version="1.0.0")
+limiter = Limiter(key_func=get_remote_address)
+app = FastAPI(title="Gaming Cafe Billing System", version="2.0.0")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,8 +44,15 @@ app.include_router(consoles.router, prefix="/api/v1")
 app.include_router(members.router, prefix="/api/v1")
 app.include_router(sessions.router, prefix="/api/v1")
 app.include_router(bills.router, prefix="/api/v1")
-app.include_router(promotions.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
+app.include_router(merchants.router, prefix="/api/v1")
+app.include_router(time_packages.router, prefix="/api/v1")
+app.include_router(shifts.router, prefix="/api/v1")
+app.include_router(products.router, prefix="/api/v1")
+app.include_router(orders.router, prefix="/api/v1")
+app.include_router(reservations.router, prefix="/api/v1")
+app.include_router(merchant_features.router, prefix="/api/v1")
+app.include_router(staff.router, prefix="/api/v1")
 
 
 class SystemConfig(BaseModel):
@@ -53,8 +71,11 @@ def update_config(body: SystemConfig, user=Depends(require_admin)):
 
 
 @app.get("/api/v1/audit-logs")
-def list_audit_logs(limit: int = 50, db: Session = Depends(get_db)):
-    logs = db.query(AuditLog).order_by(AuditLog.id.desc()).limit(limit).all()
+def list_audit_logs(limit: int = 50, db: Session = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(AuditLog)
+    if merchant_id is not None:
+        query = query.filter(AuditLog.merchant_id == merchant_id)
+    logs = query.order_by(AuditLog.id.desc()).limit(limit).all()
     undoable_actions = {"delete_member", "delete_console", "refund_bill", "recharge", "end_session"}
     return [
         {
@@ -144,7 +165,8 @@ def undo_audit_log(log_id: int, db: Session = Depends(get_db), user=Depends(get_
                     reference_id=bill.id,
                     description=f"撤回退款 账单#{bill.id}",
                     balance_after=member.balance,
-                )
+                    merchant_id=bill.merchant_id,
+                    )
         db.commit()
         return {"message": f"账单#{bill.id} 退款已撤回"}
 
@@ -167,6 +189,7 @@ def undo_audit_log(log_id: int, db: Session = Depends(get_db), user=Depends(get_
             reference_id=tx_id,
             description=f"撤回充值 ¥{amount:.0f}" + (f"+赠费¥{bonus:.0f}" if bonus > 0 else ""),
             balance_after=member.balance,
+            merchant_id=member.merchant_id,
         )
         db.commit()
         return {"message": f"充值 ¥{amount:.0f} 已撤回，余额 ¥{member.balance:.2f}"}
@@ -198,6 +221,7 @@ def undo_audit_log(log_id: int, db: Session = Depends(get_db), user=Depends(get_
                     reference_id=bill.id,
                     description=f"撤回会话#{session_id} 结算",
                     balance_after=member.balance,
+                    merchant_id=bill.merchant_id,
                 )
 
         # Delete the bill
@@ -263,8 +287,11 @@ class BonusRuleUpdate(BaseModel):
 
 
 @app.get("/api/v1/bonus-rules")
-def list_bonus_rules(db: Session = Depends(get_db)):
-    rules = db.query(BonusRule).order_by(BonusRule.min_amount.desc()).all()
+def list_bonus_rules(db: Session = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(BonusRule)
+    if merchant_id is not None:
+        query = query.filter(BonusRule.merchant_id == merchant_id)
+    rules = query.order_by(BonusRule.min_amount.desc()).all()
     return [
         {"id": r.id, "name": r.name, "min_amount": r.min_amount,
          "bonus_type": r.bonus_type, "bonus_value": r.bonus_value, "is_active": r.is_active}
@@ -273,8 +300,8 @@ def list_bonus_rules(db: Session = Depends(get_db)):
 
 
 @app.post("/api/v1/bonus-rules")
-def create_bonus_rule(body: BonusRuleCreate, db: Session = Depends(get_db)):
-    rule = BonusRule(**body.model_dump())
+def create_bonus_rule(body: BonusRuleCreate, db: Session = Depends(get_db), user=Depends(require_merchant_or_admin), merchant_id: int | None = Depends(get_current_merchant_id)):
+    rule = BonusRule(**body.model_dump(), merchant_id=merchant_id)
     db.add(rule)
     db.commit()
     db.refresh(rule)
@@ -283,8 +310,11 @@ def create_bonus_rule(body: BonusRuleCreate, db: Session = Depends(get_db)):
 
 
 @app.put("/api/v1/bonus-rules/{rule_id}")
-def update_bonus_rule(rule_id: int, body: BonusRuleUpdate, db: Session = Depends(get_db)):
-    rule = db.query(BonusRule).filter(BonusRule.id == rule_id).first()
+def update_bonus_rule(rule_id: int, body: BonusRuleUpdate, db: Session = Depends(get_db), user=Depends(require_merchant_or_admin), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(BonusRule).filter(BonusRule.id == rule_id)
+    if merchant_id is not None:
+        query = query.filter(BonusRule.merchant_id == merchant_id)
+    rule = query.first()
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
     for k, v in body.model_dump(exclude_unset=True).items():
@@ -296,8 +326,11 @@ def update_bonus_rule(rule_id: int, body: BonusRuleUpdate, db: Session = Depends
 
 
 @app.delete("/api/v1/bonus-rules/{rule_id}")
-def delete_bonus_rule(rule_id: int, db: Session = Depends(get_db)):
-    rule = db.query(BonusRule).filter(BonusRule.id == rule_id).first()
+def delete_bonus_rule(rule_id: int, db: Session = Depends(get_db), user=Depends(require_merchant_or_admin), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(BonusRule).filter(BonusRule.id == rule_id)
+    if merchant_id is not None:
+        query = query.filter(BonusRule.merchant_id == merchant_id)
+    rule = query.first()
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
     db.delete(rule)
@@ -305,9 +338,84 @@ def delete_bonus_rule(rule_id: int, db: Session = Depends(get_db)):
     return {"message": "Rule deleted"}
 
 
+@app.websocket("/ws/dashboard")
+async def websocket_dashboard(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            # Keep connection alive; client sends pings
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+
 @app.on_event("startup")
-def on_startup():
-    Base.metadata.create_all(bind=engine)
+async def on_startup():
+    # Use alembic for migrations instead of create_all
+    import subprocess
+    subprocess.run(["alembic", "upgrade", "head"], cwd=str(Path(__file__).parent), capture_output=True)
+    asyncio.create_task(broadcast_loop())
+
+
+async def broadcast_loop():
+    """Background task: broadcast timer state every second."""
+    import asyncio
+    from app.models.session import Session as SessionModel
+    from app.models.console import Console
+    from app.services.timing import get_elapsed_seconds, get_countdown_remaining
+
+    while True:
+        await asyncio.sleep(1)
+        if manager.active_connections == 0:
+            continue
+        try:
+            db = SessionLocal()
+            active = db.query(SessionModel).filter(
+                SessionModel.status.in_(["active", "paused"])
+            ).all()
+            updates = []
+            for s in active:
+                console = db.query(Console).filter(Console.id == s.console_id).first()
+                elapsed = get_elapsed_seconds(s)
+                remaining = get_countdown_remaining(s) if s.billing_mode == "countdown" else None
+                updates.append({
+                    "session_id": s.id,
+                    "console_id": s.console_id,
+                    "console_name": console.name if console else "?",
+                    "status": s.status,
+                    "billing_mode": s.billing_mode,
+                    "elapsed_sec": round(elapsed),
+                    "current_cost": round(console.hourly_rate * (elapsed / 3600), 2) if console else 0,
+                    "countdown_remaining": round(remaining) if remaining is not None else None,
+                    "countdown_expired": remaining <= 0 if remaining is not None else False,
+                })
+            db.close()
+            await manager.broadcast({"type": "timer_update", "sessions": updates})
+        except Exception:
+            pass
+
+        # Countdown expiry notifications
+        try:
+            from app.models.session import Session as SessionModel
+            expiring = db.query(SessionModel).filter(
+                SessionModel.status == "active",
+                SessionModel.billing_mode == "countdown",
+            ).all()
+            for s in expiring:
+                remaining = get_countdown_remaining(s)
+                if 0 < remaining <= 300:  # 5 minutes warning
+                    await manager.broadcast_event("countdown_warning", {
+                        "session_id": s.id,
+                        "console_id": s.console_id,
+                        "remaining_sec": round(remaining),
+                    })
+                elif remaining <= 0:
+                    await manager.broadcast_event("countdown_expired", {
+                        "session_id": s.id,
+                        "console_id": s.console_id,
+                    })
+        except Exception:
+            pass
 
 
 @app.get("/api/v1/health")

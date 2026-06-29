@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, require_active_merchant, get_current_merchant_id
 from app.config import settings
 from app.models.console import Console
 from app.models.member import Member
@@ -23,21 +23,25 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 def list_sessions(
     status: str | None = None,
     db: DBSession = Depends(get_db),
+    merchant_id: int | None = Depends(get_current_merchant_id),
 ):
     query = db.query(Session)
     if status:
         query = query.filter(Session.status == status)
+    if merchant_id is not None:
+        query = query.filter(Session.merchant_id == merchant_id)
     return query.order_by(Session.id.desc()).limit(200).all()
 
 
 @router.get("/active")
-def active_sessions(db: DBSession = Depends(get_db)):
-    sessions = (
+def active_sessions(db: DBSession = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = (
         db.query(Session)
         .filter(Session.status.in_(["active", "paused"]))
-        .order_by(Session.id.desc())
-        .all()
     )
+    if merchant_id is not None:
+        query = query.filter(Session.merchant_id == merchant_id)
+    sessions = query.order_by(Session.id.desc()).all()
     result = []
     for s in sessions:
         console = db.query(Console).filter(Console.id == s.console_id).first()
@@ -68,7 +72,7 @@ def active_sessions(db: DBSession = Depends(get_db)):
 
 
 @router.post("", response_model=SessionOut)
-def start_session(body: SessionStart, db: DBSession = Depends(get_db), user: User = Depends(get_current_user)):
+def start_session(body: SessionStart, db: DBSession = Depends(get_db), user: User = Depends(get_current_user), merchant_id: int | None = Depends(get_current_merchant_id)):
     console = db.query(Console).filter(Console.id == body.console_id).first()
     if not console:
         raise HTTPException(status_code=404, detail="Console not found")
@@ -99,6 +103,7 @@ def start_session(body: SessionStart, db: DBSession = Depends(get_db), user: Use
         billing_mode=body.billing_mode,
         duration_limit=body.duration_limit,
         operator_id=user.id,
+        merchant_id=merchant_id,
     )
     db.add(session)
     console.status = "in_use"
@@ -108,8 +113,11 @@ def start_session(body: SessionStart, db: DBSession = Depends(get_db), user: Use
 
 
 @router.put("/{session_id}/pause")
-def pause(session_id: int, db: DBSession = Depends(get_db)):
-    session = db.query(Session).filter(Session.id == session_id).first()
+def pause(session_id: int, db: DBSession = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(Session).filter(Session.id == session_id)
+    if merchant_id is not None:
+        query = query.filter(Session.merchant_id == merchant_id)
+    session = query.first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     pause_session(db, session)
@@ -118,8 +126,11 @@ def pause(session_id: int, db: DBSession = Depends(get_db)):
 
 
 @router.put("/{session_id}/resume")
-def resume(session_id: int, db: DBSession = Depends(get_db)):
-    session = db.query(Session).filter(Session.id == session_id).first()
+def resume(session_id: int, db: DBSession = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(Session).filter(Session.id == session_id)
+    if merchant_id is not None:
+        query = query.filter(Session.merchant_id == merchant_id)
+    session = query.first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     resume_session(db, session)
@@ -128,8 +139,11 @@ def resume(session_id: int, db: DBSession = Depends(get_db)):
 
 
 @router.put("/{session_id}/end")
-def end(session_id: int, body: SessionEndRequest = SessionEndRequest(), db: DBSession = Depends(get_db), user: User = Depends(get_current_user)):
-    session = db.query(Session).filter(Session.id == session_id).first()
+def end(session_id: int, body: SessionEndRequest = SessionEndRequest(), db: DBSession = Depends(get_db), user: User = Depends(get_current_user), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(Session).filter(Session.id == session_id)
+    if merchant_id is not None:
+        query = query.filter(Session.merchant_id == merchant_id)
+    session = query.first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if session.status == "ended":
@@ -143,7 +157,7 @@ def end(session_id: int, body: SessionEndRequest = SessionEndRequest(), db: DBSe
         member = db.query(Member).filter(Member.id == body.member_id, Member.status == "active").first()
 
     end_session(db, session)
-    bill = generate_bill(db, session, console, member, payment_method=body.payment_method)
+    bill = generate_bill(db, session, console, member, payment_method=body.payment_method, merchant_id=merchant_id)
     console.status = "idle"
 
     # Audit log
@@ -160,6 +174,7 @@ def end(session_id: int, body: SessionEndRequest = SessionEndRequest(), db: DBSe
             "payment_method": body.payment_method, "member_id": session.member_id,
         }, ensure_ascii=False),
         description=f"结束会话#{session.id} {console.name if console else ''} ¥{bill.final_amount:.2f}",
+        merchant_id=merchant_id,
     )
     db.add(log)
 
@@ -176,8 +191,11 @@ def end(session_id: int, body: SessionEndRequest = SessionEndRequest(), db: DBSe
 
 
 @router.get("/{session_id}", response_model=SessionOut)
-def get_session(session_id: int, db: DBSession = Depends(get_db)):
-    session = db.query(Session).filter(Session.id == session_id).first()
+def get_session(session_id: int, db: DBSession = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(Session).filter(Session.id == session_id)
+    if merchant_id is not None:
+        query = query.filter(Session.merchant_id == merchant_id)
+    session = query.first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
@@ -188,8 +206,11 @@ class SessionExtendRequest(BaseModel):
 
 
 @router.put("/{session_id}/extend")
-def extend_session(session_id: int, body: SessionExtendRequest, db: DBSession = Depends(get_db)):
-    session = db.query(Session).filter(Session.id == session_id).first()
+def extend_session(session_id: int, body: SessionExtendRequest, db: DBSession = Depends(get_db), merchant_id: int | None = Depends(get_current_merchant_id)):
+    query = db.query(Session).filter(Session.id == session_id)
+    if merchant_id is not None:
+        query = query.filter(Session.merchant_id == merchant_id)
+    session = query.first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if session.status not in ("active", "paused"):

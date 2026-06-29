@@ -10,6 +10,7 @@ class Session(Base):
     __tablename__ = "sessions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    merchant_id = Column(Integer, nullable=True)
     console_id = Column(Integer, ForeignKey("consoles.id"), nullable=False)
     member_id = Column(Integer, ForeignKey("members.id"), nullable=True)
     billing_mode = Column(String, nullable=False)  # count_up | countdown

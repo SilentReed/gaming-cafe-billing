@@ -10,6 +10,7 @@ class Console(Base):
     __tablename__ = "consoles"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    merchant_id = Column(Integer, nullable=True)
     name = Column(String, nullable=False)
     console_type = Column(String, nullable=False)  # PS5, Xbox, Switch, PC
     hourly_rate = Column(Float, nullable=False, default=0)
